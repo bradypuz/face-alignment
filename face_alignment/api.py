@@ -157,10 +157,10 @@ class FaceAlignment:
         images_numpy = []
         centers = []
         scales = []
-        heatmaps_list = Variable(torch.zeros(bs, 68, 64, 64))       #the default size of FAN output
-        inps = Variable(torch.zeros(bs, nc, h, w))
+        # heatmaps_list = Variable(torch.zeros(bs, 68, 64, 64))       #the default size of FAN output
+        inps = Variable(torch.zeros(bs, nc, 256, 256))              #the default size of inputs of FAN is 256
         if use_cuda:
-            heatmaps_list = heatmaps_list.cuda()
+            # heatmaps_list = heatmaps_list.cuda()
             inps = inps.cuda()
         for i in range(bs):
             image = input_image[i].data.cpu().float().numpy()
@@ -171,16 +171,21 @@ class FaceAlignment:
             detected_face_list = self.detect_faces(image)
 
             # print(len(detected_face_list))
-            assert (len(detected_face_list) == 1)                        #assuming there is only one face in each input image
-            detected_face = detected_face_list[-1]
-            bbox = detected_face.rect
-            center = torch.FloatTensor(
-                [bbox.right() - (bbox.right() - bbox.left()) / 2.0, bbox.bottom() -
-                 (bbox.bottom() - bbox.top()) / 2.0])
+            if False and (len(detected_face_list) == 1):
+            # assert (len(detected_face_list) == 1)                        #assuming there is only one face in each input image
+                detected_face = detected_face_list[-1]
+                bbox = detected_face.rect
+                center = torch.FloatTensor(
+                    [bbox.right() - (bbox.right() - bbox.left()) / 2.0, bbox.bottom() -
+                     (bbox.bottom() - bbox.top()) / 2.0])
+                scale = (bbox.right() - bbox.left() + bbox.bottom() - bbox.top()) / 195.0
+
+                center[1] = center[1] - (bbox.bottom() - bbox.top()) * 0.12
+            else:
+                center = torch.FloatTensor([0.5*h, 0.56*w])
+                scale = 1.17 * (h + w) / (195.0 * 2)
             if use_cuda:
                 center = center.cuda()
-            center[1] = center[1] - (bbox.bottom() - bbox.top()) * 0.12
-            scale = (bbox.right() - bbox.left() + bbox.bottom() - bbox.top()) / 195.0
 
             inp = crop(input_image[i], center, scale)
             inp = inp.add(1).div(2)

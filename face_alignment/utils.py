@@ -122,6 +122,7 @@ def crop(image, center, scale, resolution=256.0, use_cuda=True):
     newImg[:, new_Y0 - 1:newY1, new_X0 - 1:newX1] = image[:, old_Y0 - 1:oldY1, old_X0 - 1:oldX1]
     newImg = newImg.unsqueeze(0)
     newImg = F.upsample_bilinear(newImg, int(resolution))
+    # newImg = F.upsample(newImg,int(resolution))
     return newImg
 
 
