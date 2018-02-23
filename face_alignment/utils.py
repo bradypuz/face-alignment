@@ -5,7 +5,12 @@ import time
 import torch
 import math
 import numpy as np
+from torch.autograd import Variable
+# import torchvision.transforms as transforms
+import torch.nn as nn
+import torch.nn.functional as F
 import cv2
+
 
 
 def _gaussian(
@@ -75,61 +80,80 @@ def transform(point, center, scale, resolution, invert=False):
 
     return new_point.int()
 
+def transform_V(point, center, scale, resolution, invert=False):
+    _pt = Variable(torch.ones(3))
+    t = Variable(torch.eye(3))
+    if point.data.is_cuda:
+        _pt = _pt.cuda()
+        t = t.cuda()
+    _pt[0] = point[0]
+    _pt[1] = point[1]
 
-def crop(image, center, scale, resolution=256.0):
+    h = 200.0 * scale
+    t[0, 0] = resolution / h
+    t[1, 1] = resolution / h
+    t[0, 2] = resolution * (-center[0] / h + 0.5)
+    t[1, 2] = resolution * (-center[1] / h + 0.5)
+
+    if invert:
+        t = torch.inverse(t)
+
+    new_point = (torch.matmul(t, _pt))[0:2]
+
+    return new_point.int()
+
+
+def crop(image, center, scale, resolution=256.0, use_cuda=True):
     # Crop around the center point
-    """ Crops the image around the center. Input is expected to be an np.ndarray """
+    """ Crops the image around the center. Input is expected to be an Variable of FloatTensor """
+    nc, ht, wd = image.size()
     ul = transform([1, 1], center, scale, resolution, True)
     br = transform([resolution, resolution], center, scale, resolution, True)
-    # pad = math.ceil(torch.norm((ul - br).float()) / 2.0 - (br[0] - ul[0]) / 2.0)
-    if image.ndim > 2:
-        newDim = np.array([br[1] - ul[1], br[0] - ul[0],
-                           image.shape[2]], dtype=np.int32)
-        newImg = np.zeros(newDim, dtype=np.uint8)
-    else:
-        newDim = np.array([br[1] - ul[1], br[0] - ul[0]], dtype=np.int)
-        newImg = np.zeros(newDim, dtype=np.uint8)
-    ht = image.shape[0]
-    wd = image.shape[1]
-    newX = np.array(
-        [max(1, -ul[0] + 1), min(br[0], wd) - ul[0]], dtype=np.int32)
-    newY = np.array(
-        [max(1, -ul[1] + 1), min(br[1], ht) - ul[1]], dtype=np.int32)
-    oldX = np.array([max(1, ul[0] + 1), min(br[0], wd)], dtype=np.int32)
-    oldY = np.array([max(1, ul[1] + 1), min(br[1], ht)], dtype=np.int32)
-    newImg[newY[0] - 1:newY[1], newX[0] - 1:newX[1]
-           ] = image[oldY[0] - 1:oldY[1], oldX[0] - 1:oldX[1], :]
-    newImg = cv2.resize(newImg, dsize=(int(resolution), int(resolution)),
-                        interpolation=cv2.INTER_LINEAR)
+    newH, newW = br[1] - ul[1], br[0] - ul[0]
+
+    newImg = Variable(torch.zeros(nc, newH, newW))
+    if use_cuda:
+        newImg = newImg.cuda()
+
+    new_X0, newX1 = int(max(1, -ul[0] + 1)), int(min(br[0], wd) - ul[0])
+    new_Y0, newY1 = int(max(1, -ul[1] + 1)), int(min(br[1], ht) - ul[1])
+    old_X0, oldX1 = int(max(1, ul[0] + 1)), int(min(br[0], wd))
+    old_Y0, oldY1 = int(max(1, ul[1] + 1)), int(min(br[1], ht))
+    newImg[:, new_Y0 - 1:newY1, new_X0 - 1:newX1] = image[:, old_Y0 - 1:oldY1, old_X0 - 1:oldX1]
+    newImg = newImg.unsqueeze(0)
+    newImg = F.upsample_bilinear(newImg, int(resolution))
     return newImg
 
 
-def get_preds_fromhm(hm, center=None, scale=None):
-    max, idx = torch.max(
-        hm.view(hm.size(0), hm.size(1), hm.size(2) * hm.size(3)), 2)
+def get_preds_fromhm(hm, centers=None, scales=None):
+    max, idx = torch.max(hm.view(hm.size(0), hm.size(1), hm.size(2) * hm.size(3)), 2)
     idx += 1
     preds = idx.view(idx.size(0), idx.size(1), 1).repeat(1, 1, 2).float()
-    preds[..., 0].apply_(lambda x: (x - 1) % hm.size(3) + 1)
-    preds[..., 1].add_(-1).div_(hm.size(2)).floor_().add_(1)
+    # for i in range()
+    preds[..., 0] = preds[...,0] - 1
+    preds[..., 0] = torch.fmod(preds[..., 0], hm.size(3)) + 1
+    preds[..., 1] = (preds[..., 1] - 1).div(hm.size(2)).floor().add(1)
 
     for i in range(preds.size(0)):
         for j in range(preds.size(1)):
             hm_ = hm[i, j, :]
             pX, pY = int(preds[i, j, 0]) - 1, int(preds[i, j, 1]) - 1
             if pX > 0 and pX < 63 and pY > 0 and pY < 63:
-                diff = torch.FloatTensor(
-                    [hm_[pY, pX + 1] - hm_[pY, pX - 1],
-                     hm_[pY + 1, pX] - hm_[pY - 1, pX]])
-                preds[i, j].add_(diff.sign_().mul_(.25))
+                sign_0 = torch.sign(hm_[pY, pX + 1] - hm_[pY, pX - 1])
+                sign_1 = torch.sign(hm_[pY + 1, pX] - hm_[pY - 1, pX])
+                preds[i, j, 0] = preds[i,j,0].add(sign_0.mul(.25))
+                preds[i, j, 1] = preds[i,j,1].add(sign_1.mul(.25))
 
     preds.add_(-.5)
 
-    preds_orig = torch.zeros(preds.size())
-    if center is not None and scale is not None:
+    preds_orig = Variable(torch.zeros(preds.size()))
+    if preds.data.is_cuda:
+        preds_orig = preds_orig.cuda()
+    if centers is not None and scales is not None:
         for i in range(hm.size(0)):
             for j in range(hm.size(1)):
-                preds_orig[i, j] = transform(
-                    preds[i, j], center, scale, hm.size(2), True)
+                preds_orig[i, j] = transform_V(
+                    preds[i, j], centers[i], scales[i], hm.size(2), True)
 
     return preds, preds_orig
 
