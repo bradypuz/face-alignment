@@ -1,18 +1,13 @@
 from __future__ import print_function
-import os
-import glob
+import numpy as np
 import dlib
-import torch
-import torch.nn as nn
-from torch.autograd import Variable
 from enum import Enum
-from skimage import io
 try:
     import urllib.request as request_file
 except BaseException:
     import urllib as request_file
 
-from .models import FAN, ResNetDepth
+from .models import FAN
 from .utils import *
 
 
@@ -110,32 +105,7 @@ class FaceAlignment:
 
         if self.enable_cuda:
             self.face_alignemnt_net.cuda()
-        self.face_alignemnt_net.eval()
-
-        # Initialiase the depth prediciton network
-        if landmarks_type == LandmarksType._3D:
-            self.depth_prediciton_net = ResNetDepth()
-            depth_model_path = os.path.join(base_path, 'depth.pth.tar')
-            if not os.path.isfile(depth_model_path):
-                print(
-                    "Downloading the Face Alignment depth Network (FAN-D). Please wait...")
-
-                request_file.urlretrieve(
-                    "https://www.adrianbulat.com/downloads/python-fan/depth.pth.tar",
-                    os.path.join(depth_model_path))
-
-            depth_weights = torch.load(
-                depth_model_path,
-                map_location=lambda storage,
-                loc: storage)
-            depth_dict = {
-                k.replace('module.', ''): v for k,
-                v in depth_weights['state_dict'].items()}
-            self.depth_prediciton_net.load_state_dict(depth_dict)
-
-            if self.enable_cuda:
-                self.depth_prediciton_net.cuda()
-            self.depth_prediciton_net.eval()
+        # self.face_alignemnt_net.eval()
 
     def detect_faces(self, image):
         """Run the dlib face detector over an image
@@ -148,9 +118,6 @@ class FaceAlignment:
             Returns a list of detected faces
         """
         return self.face_detector(image, 1)
-
-
-
 
     def get_landmarks(self, input_image, all_faces=False, use_cuda = True):
         bs, nc, h, w = input_image.size()
@@ -191,35 +158,9 @@ class FaceAlignment:
             inp = inp.add(1).div(2)
             centers.append(center)
             scales.append(scale)
-            # out = self.face_alignemnt_net(inp)[-1]
             inps[i, :, :, :] = inp[0, :, :, :]
-        # heatmaps_list[i, :, :, :] = out[0, :, : ,:]
-        heatmaps_list = self.face_alignemnt_net(inps)[-1]               #only use the last feature maps
-        pts, pts_img = get_preds_fromhm(heatmaps_list, centers, scales)
+        heatmaps_list = self.face_alignemnt_net(inps)               #only use the last feature maps
+        pts, pts_img = get_preds_fromhm(heatmaps_list[-1], centers, scales)
         pts, pts_img = pts.view(bs, 68, 2) * 4, pts_img.view(bs, 68, 2)
 
-        return pts_img
-
-    def process_folder(self, path, all_faces=False):
-        types = ('*.jpg', '*.png')
-        images_list = []
-        for files in types:
-            images_list.extend(glob.glob(os.path.join(path, files)))
-
-        predictions = []
-        for image_name in images_list:
-            predictions.append(
-                image_name, self.get_landmarks(image_name, all_faces))
-
-        return predictions
-
-    def remove_models(self):
-        base_path = os.path.join(appdata_dir('face_alignment'), "data")
-        for data_model in os.listdir(base_path):
-            file_path = os.path.join(base_path, data_model)
-            try:
-                if os.path.isfile(file_path):
-                    print('Removing ' + data_model + ' ...')
-                    os.unlink(file_path)
-            except Exception as e:
-                print(e)
+        return pts_img,heatmaps_list
