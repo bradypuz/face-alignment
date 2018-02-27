@@ -138,7 +138,7 @@ class FaceAlignment:
             detected_face_list = self.detect_faces(image)
 
             # print(len(detected_face_list))
-            if False and (len(detected_face_list) == 1):
+            if (len(detected_face_list) == 1):
             # assert (len(detected_face_list) == 1)                        #assuming there is only one face in each input image
                 detected_face = detected_face_list[-1]
                 bbox = detected_face.rect
@@ -163,4 +163,4 @@ class FaceAlignment:
         pts, pts_img = get_preds_fromhm(heatmaps_list[-1], centers, scales)
         pts, pts_img = pts.view(bs, 68, 2) * 4, pts_img.view(bs, 68, 2)
 
-        return pts_img,heatmaps_list
+        return pts_img,heatmaps_list, centers, scales
