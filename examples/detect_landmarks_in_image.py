@@ -23,6 +23,7 @@ parser.add_argument('--workers', type=int, help='number of data loading workers'
 parser.add_argument('--batchSize', type=int, default=10, help='input batch size')
 parser.add_argument('--imageSize', type=int, default=1024, help='the height / width of the input image to network')
 parser.add_argument('--cuda', action='store_true', help='enables cuda')
+parser.add_argument('--is_3d', action='store_true', help='if specified, output 3D landmarks')
 parser.add_argument('--ngpu', type=int, default=1, help='number of GPUs to use')
 parser.add_argument('--outf', default='.', help='folder to output images and model checkpoints')
 
@@ -65,7 +66,7 @@ if opt.cuda:
     input = input.cuda()
 
 # Run the 3D face alignment on a test image, without CUDA.
-fa = face_alignment.FaceAlignment(face_alignment.LandmarksType._2D, enable_cuda=opt.cuda, flip_input=False)
+fa = face_alignment.FaceAlignment(face_alignment.LandmarksType._2D, enable_cuda=opt.cuda, flip_input=False, is_3d=opt.is_3d)
 
 paths = dataloader.dataset.imgs
 num = len(paths)

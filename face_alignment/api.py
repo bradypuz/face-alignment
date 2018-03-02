@@ -51,7 +51,7 @@ class FaceAlignment:
 
     def __init__(self, landmarks_type, network_size=NetworkSize.LARGE,
                  enable_cuda=True, enable_cudnn=True, flip_input=False,
-                 use_cnn_face_detector=False):
+                 use_cnn_face_detector=False, is_3d = False):
         self.enable_cuda = enable_cuda
         self.use_cnn_face_detector = use_cnn_face_detector
         self.flip_input = flip_input
