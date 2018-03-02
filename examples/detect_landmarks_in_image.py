@@ -20,7 +20,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--dataset', required=True, help='cifar10 | lsun | imagenet | folder | lfw | fake')
 parser.add_argument('--dataroot', required=True, help='path to dataset')
 parser.add_argument('--workers', type=int, help='number of data loading workers', default=2)
-parser.add_argument('--batchSize', type=int, default=5, help='input batch size')
+parser.add_argument('--batchSize', type=int, default=10, help='input batch size')
 parser.add_argument('--imageSize', type=int, default=1024, help='the height / width of the input image to network')
 parser.add_argument('--cuda', action='store_true', help='enables cuda')
 parser.add_argument('--ngpu', type=int, default=1, help='number of GPUs to use')
@@ -82,22 +82,65 @@ for i in range(num):
     fnames.append(tmp)
     indices.append(idx)
 
+
+pth_dir = os.path.join(opt.outf, 'heatmaps')
+img_dir = os.path.join(opt.outf, 'imgs')
+img_dir_lowRes = os.path.join(opt.outf, 'imgs_256')
+
 for i, data in enumerate(dataloader, 0):
+    print("count:%d" % (cnt))
     real_cpu, _ = data
     batch_size = real_cpu.size(0)
     if opt.cuda:
         real_cpu = real_cpu.cuda()
     input.resize_as_(real_cpu).copy_(real_cpu)
     intputv = Variable(input)
-    preds_v, _, centers, scales = fa.get_landmarks(intputv)
-    preds_v = preds_v.view(batch_size, -1)
-    p_np = preds_v.data.cpu().numpy()
+    preds_v, heatmaps, centers, scales = fa.get_landmarks(intputv)
+    preds_v_flat = preds_v.view(batch_size, -1)
+    p_np = preds_v_flat.data.cpu().numpy()
     c_np = np.empty([batch_size, 2])
     for i in range(batch_size):
         cur_c = centers[i].cpu().numpy()
         c_np[i, :] = cur_c
     s_np = np.asarray(scales).reshape((batch_size, 1))
     vals[cnt: cnt+batch_size] = np.append(np.append(p_np, c_np, axis=1), s_np, axis=1)
+
+
+    if not os.path.exists(pth_dir):
+        os.makedirs(pth_dir)
+    if not os.path.exists(img_dir):
+        os.makedirs(img_dir)
+    if not os.path.exists(img_dir_lowRes):
+        os.makedirs(img_dir_lowRes)
+    #save heatmaps and draw connected points as images
+    for j in range(batch_size):
+        hmap = heatmaps[-1][j, :, :].unsqueeze(0)
+        cur_name = indices[cnt+j] + '.pth'
+        cur_img_name = indices[cnt+j] + '.png'
+        cur_path = os.path.join(pth_dir, cur_name)
+        cur_img_path = os.path.join(img_dir, cur_img_name)
+        torch.save(hmap, cur_path)
+
+        preds = preds_v[j,:,:].data.cpu().numpy()
+        preds = np.rint(preds).astype(np.int32)
+        cur_img = np.zeros((opt.imageSize, opt.imageSize, 3))
+
+        cv2.polylines(cur_img, [preds[0:17]], 0, (1, 1, 1), thickness=2, lineType=cv2.LINE_AA)
+        cv2.polylines(cur_img, [preds[17:22]], 0, (2, 2, 2), thickness=2, lineType=cv2.LINE_AA)
+        cv2.polylines(cur_img, [preds[22:27]], 0, (3, 3, 3), thickness=2, lineType=cv2.LINE_AA)
+        cv2.polylines(cur_img, [preds[27:31]], 0, (4, 4, 4), thickness=2, lineType=cv2.LINE_AA)
+        cv2.polylines(cur_img, [preds[31:36]], 0, (5, 5, 5), thickness=2, lineType=cv2.LINE_AA)
+        cv2.polylines(cur_img, [preds[36:42]], 1, (6, 6, 6), thickness=2, lineType=cv2.LINE_AA)
+        cv2.polylines(cur_img, [preds[42:48]], 1, (7, 7, 7), thickness=2, lineType=cv2.LINE_AA)
+        cv2.polylines(cur_img, [preds[48:60]], 1, (8, 8, 8), thickness=2, lineType=cv2.LINE_AA)
+        cv2.polylines(cur_img, [preds[60:68]], 1, (9, 9, 9), thickness=2, lineType=cv2.LINE_AA)
+        cv2.imwrite(cur_img_path, cur_img)
+
+        cur_img_low_path = os.path.join(img_dir_lowRes, cur_img_name)
+        cur_img_lowRes = cv2.resize(cur_img, (256, 256))
+
+        cv2.imwrite(cur_img_low_path, cur_img_lowRes)
+
     cnt += batch_size
 
 #write the matrix and image names to a single csv file
@@ -109,7 +152,7 @@ for i, data in enumerate(dataloader, 0):
 
 raw_data = {'names': fnames}
 column_names = ['names']
-outname = os.path.join(opt.outf,'test.csv')
+outname = os.path.join(opt.outf,'landmarkds.csv')
 #update x y coordinates
 for i in range(68):
     cur_x_name = 'x' + str(int(i))
@@ -133,27 +176,27 @@ raw_data.update({scale_name: vals[:, 138]})
 df = pd.DataFrame(raw_data, columns=column_names)
 df.to_csv(outname, index=False)
 
-
-#load and visualize saved csv
-face_dataset = FaceLandmarksDataset(csv_file=outname,
-                                    root_dir=os.path.join(opt.dataroot, 'train'))
-
-fig = plt.figure()
-
-for i in range(len(face_dataset)):
-    sample = face_dataset[i]
-
-    print(i, sample['image'].shape, sample['landmarks'].shape)
-
-    ax = plt.subplot(1, 4, i + 1)
-    plt.tight_layout()
-    ax.set_title('Sample #{}'.format(i))
-    ax.axis('off')
-    show_landmarks(**sample)
-
-    if i == 3:
-        plt.show()
-        break
+#-----------------------------------------------Loading and Visualization--------------------
+# face_dataset = FaceLandmarksDataset(csv_file=outname,
+#                                     root_dir=os.path.join(opt.dataroot, 'trainB'))
+#
+# fig = plt.figure()
+#
+# for i in range(len(face_dataset)):
+#     sample = face_dataset[i]
+#
+#     print(i, sample['image'].shape, sample['landmarks'].shape)
+#
+#     ax = plt.subplot(1, 4, i + 1)
+#     plt.tight_layout()
+#     ax.set_title('Sample #{}'.format(i))
+#     ax.axis('off')
+#     show_landmarks(**sample)
+#
+#     if i == 3:
+#         plt.show()
+#         break
+print("Finish!")
 
 
 

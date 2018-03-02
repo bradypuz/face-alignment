@@ -20,6 +20,8 @@ lib64/
 parts/
 sdist/
 var/
+heatmaps/
+imgs/
 wheels/
 *.egg-info/
 .installed.cfg
