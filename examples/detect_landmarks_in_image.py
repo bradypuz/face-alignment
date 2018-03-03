@@ -21,7 +21,7 @@ parser.add_argument('--dataset', required=True, help='cifar10 | lsun | imagenet 
 parser.add_argument('--dataroot', required=True, help='path to dataset')
 parser.add_argument('--workers', type=int, help='number of data loading workers', default=2)
 parser.add_argument('--batchSize', type=int, default=10, help='input batch size')
-parser.add_argument('--imageSize', type=int, default=1024, help='the height / width of the input image to network')
+parser.add_argument('--imageSize', type=int, default=256, help='the height / width of the input image to network')
 parser.add_argument('--cuda', action='store_true', help='enables cuda')
 parser.add_argument('--ngpu', type=int, default=1, help='number of GPUs to use')
 parser.add_argument('--outf', default='.', help='folder to output images and model checkpoints')
@@ -124,8 +124,10 @@ for i, data in enumerate(dataloader, 0):
 
         preds = preds_v[j,:,:].data.cpu().numpy()
         preds = np.rint(preds).astype(np.int32)
-        cur_img = np.zeros((opt.imageSize, opt.imageSize, 3))
-
+        # cur_img = np.zeros((opt.imageSize, opt.imageSize, 3))
+        image_numpy = intputv[j].data.cpu().float().numpy()
+        cur_img = ((np.transpose(image_numpy, (1, 2, 0)) + 1) / 2.0 * 255.0).astype(np.uint8).copy()
+        cur_img = cv2.cvtColor(cur_img, cv2.COLOR_RGB2BGR)
         cv2.polylines(cur_img, [preds[0:17]], 0, (1, 1, 1), thickness=2, lineType=cv2.LINE_AA)
         cv2.polylines(cur_img, [preds[17:22]], 0, (2, 2, 2), thickness=2, lineType=cv2.LINE_AA)
         cv2.polylines(cur_img, [preds[22:27]], 0, (3, 3, 3), thickness=2, lineType=cv2.LINE_AA)
@@ -137,10 +139,10 @@ for i, data in enumerate(dataloader, 0):
         cv2.polylines(cur_img, [preds[60:68]], 1, (9, 9, 9), thickness=2, lineType=cv2.LINE_AA)
         cv2.imwrite(cur_img_path, cur_img)
 
-        cur_img_low_path = os.path.join(img_dir_lowRes, cur_img_name)
-        cur_img_lowRes = cv2.resize(cur_img, (256, 256))
+        # cur_img_low_path = os.path.join(img_dir_lowRes, cur_img_name)
+        # cur_img_lowRes = cv2.resize(cur_img, (256, 256))
 
-        cv2.imwrite(cur_img_low_path, cur_img_lowRes)
+        # cv2.imwrite(cur_img_low_path, cur_img_lowRes)
 
     cnt += batch_size
 
