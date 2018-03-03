@@ -24,12 +24,12 @@ def transform(point, center, scale, resolution, invert=False):
 
     return new_point.int()
 
-def transform_V(point, center, scale, resolution, invert=False):
+def transform_V(point, center, scale, resolution, invert=False, gpu_ids=[]):
     _pt = Variable(torch.ones(3))
     t = Variable(torch.eye(3))
     if point.data.is_cuda:
-        _pt = _pt.cuda()
-        t = t.cuda()
+        _pt = _pt.cuda(device=gpu_ids[0])
+        t = t.cuda(device=gpu_ids[0])
     _pt[0] = point[0]
     _pt[1] = point[1]
 
@@ -47,7 +47,7 @@ def transform_V(point, center, scale, resolution, invert=False):
     return new_point.int()
 
 
-def crop(image, center, scale, resolution=256.0, use_cuda=True):
+def crop(image, center, scale, resolution=256.0, use_cuda=True, gpu_ids=[]):
     # Crop around the center point
     """ Crops the image around the center. Input is expected to be an Variable of FloatTensor """
     nc, ht, wd = image.size()
@@ -57,7 +57,7 @@ def crop(image, center, scale, resolution=256.0, use_cuda=True):
 
     newImg = Variable(torch.zeros(nc, newH, newW))
     if use_cuda:
-        newImg = newImg.cuda()
+        newImg = newImg.cuda(gpu_ids[0])
 
     new_X0, newX1 = int(max(1, -ul[0] + 1)), int(min(br[0], wd) - ul[0])
     new_Y0, newY1 = int(max(1, -ul[1] + 1)), int(min(br[1], ht) - ul[1])
@@ -70,7 +70,7 @@ def crop(image, center, scale, resolution=256.0, use_cuda=True):
     return newImg
 
 
-def get_preds_fromhm(hm, centers=None, scales=None):
+def get_preds_fromhm(hm, centers=None, scales=None, gpu_ids=[]):
     max, idx = torch.max(hm.view(hm.size(0), hm.size(1), hm.size(2) * hm.size(3)), 2)
     idx += 1
     preds = idx.view(idx.size(0), idx.size(1), 1).repeat(1, 1, 2).float()
@@ -93,12 +93,12 @@ def get_preds_fromhm(hm, centers=None, scales=None):
 
     preds_orig = Variable(torch.zeros(preds.size()))
     if preds.data.is_cuda:
-        preds_orig = preds_orig.cuda()
+        preds_orig = preds_orig.cuda(device=gpu_ids[0])
     if centers is not None and scales is not None:
         for i in range(hm.size(0)):
             for j in range(hm.size(1)):
                 preds_orig[i, j] = transform_V(
-                    preds[i, j], centers[i], scales[i], hm.size(2), True)
+                    preds[i, j], centers[i], scales[i], hm.size(2), True, gpu_ids=gpu_ids)
 
     return preds, preds_orig
 

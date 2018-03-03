@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 from examples.FaceLandmarksDataset import FaceLandmarksDataset, RandomCrop, Rescale, ToTensor
 import random
+import torchvision.utils as vision
 
 
 parser = argparse.ArgumentParser()
@@ -23,9 +24,9 @@ parser.add_argument('--workers', type=int, help='number of data loading workers'
 parser.add_argument('--batchSize', type=int, default=10, help='input batch size')
 parser.add_argument('--imageSize', type=int, default=1024, help='the height / width of the input image to network')
 parser.add_argument('--cuda', action='store_true', help='enables cuda')
-parser.add_argument('--is_3d', action='store_true', help='if specified, output 3D landmarks')
 parser.add_argument('--ngpu', type=int, default=1, help='number of GPUs to use')
 parser.add_argument('--outf', default='.', help='folder to output images and model checkpoints')
+parser.add_argument('--gpu_ids', default='0', help='the indices of GPUs to use')
 
 
 def show_landmarks(image, landmarks):
@@ -39,7 +40,10 @@ plt.ion()  # interactive mode
 
 opt = parser.parse_args()
 print(opt)
-
+gpus = opt.gpu_ids.split(',')
+gpu_ids= []
+for i in range(len(gpus)):
+    gpu_ids.append(int(gpus[i]))
 try:
     os.makedirs(opt.outf)
 except OSError:
@@ -63,10 +67,10 @@ nc = 3
 
 input = torch.FloatTensor(opt.batchSize, 3, opt.imageSize, opt.imageSize)
 if opt.cuda:
-    input = input.cuda()
+    input = input.cuda(device=gpu_ids[0])
 
 # Run the 3D face alignment on a test image, without CUDA.
-fa = face_alignment.FaceAlignment(face_alignment.LandmarksType._2D, enable_cuda=opt.cuda, flip_input=False, is_3d=opt.is_3d)
+fa = face_alignment.FaceAlignment(face_alignment.LandmarksType._3D, enable_cuda=opt.cuda, flip_input=False, gpu_ids=gpu_ids)
 
 paths = dataloader.dataset.imgs
 num = len(paths)
@@ -93,7 +97,7 @@ for i, data in enumerate(dataloader, 0):
     real_cpu, _ = data
     batch_size = real_cpu.size(0)
     if opt.cuda:
-        real_cpu = real_cpu.cuda()
+        real_cpu = real_cpu.cuda(device=gpu_ids[0])
     input.resize_as_(real_cpu).copy_(real_cpu)
     intputv = Variable(input)
     preds_v, heatmaps, centers, scales = fa.get_landmarks(intputv)
@@ -120,21 +124,31 @@ for i, data in enumerate(dataloader, 0):
         cur_img_name = indices[cnt+j] + '.png'
         cur_path = os.path.join(pth_dir, cur_name)
         cur_img_path = os.path.join(img_dir, cur_img_name)
+        #normalize the heatmaps to [0,1] channel wise
+        min, max = torch.min(hmap), torch.max(hmap)
+        print("batch:%d, min:%.4f, max:%.4f" % (j, min.data[0], max.data[0]))
+        hmap = hmap.cpu().data
         torch.save(hmap, cur_path)
 
         preds = preds_v[j,:,:].data.cpu().numpy()
         preds = np.rint(preds).astype(np.int32)
         cur_img = np.zeros((opt.imageSize, opt.imageSize, 3))
 
-        cv2.polylines(cur_img, [preds[0:17]], 0, (1, 1, 1), thickness=2, lineType=cv2.LINE_AA)
-        cv2.polylines(cur_img, [preds[17:22]], 0, (2, 2, 2), thickness=2, lineType=cv2.LINE_AA)
-        cv2.polylines(cur_img, [preds[22:27]], 0, (3, 3, 3), thickness=2, lineType=cv2.LINE_AA)
-        cv2.polylines(cur_img, [preds[27:31]], 0, (4, 4, 4), thickness=2, lineType=cv2.LINE_AA)
-        cv2.polylines(cur_img, [preds[31:36]], 0, (5, 5, 5), thickness=2, lineType=cv2.LINE_AA)
-        cv2.polylines(cur_img, [preds[36:42]], 1, (6, 6, 6), thickness=2, lineType=cv2.LINE_AA)
-        cv2.polylines(cur_img, [preds[42:48]], 1, (7, 7, 7), thickness=2, lineType=cv2.LINE_AA)
-        cv2.polylines(cur_img, [preds[48:60]], 1, (8, 8, 8), thickness=2, lineType=cv2.LINE_AA)
-        cv2.polylines(cur_img, [preds[60:68]], 1, (9, 9, 9), thickness=2, lineType=cv2.LINE_AA)
+        cv2.polylines(cur_img, [preds[0:9]], 0, (1, 1, 1), thickness=2, lineType=cv2.LINE_AA)
+        cv2.polylines(cur_img, [preds[8:17]], 0, (2, 2, 2), thickness=2, lineType=cv2.LINE_AA)
+        cv2.polylines(cur_img, [preds[17:20]], 0, (3, 3, 3), thickness=2, lineType=cv2.LINE_AA)
+        cv2.polylines(cur_img, [preds[19:22]], 0, (4, 4, 4), thickness=2, lineType=cv2.LINE_AA)
+        cv2.polylines(cur_img, [preds[22:25]], 0, (5, 5, 5), thickness=2, lineType=cv2.LINE_AA)
+        cv2.polylines(cur_img, [preds[24:27]], 0, (6, 6, 6), thickness=2, lineType=cv2.LINE_AA)
+        cv2.polylines(cur_img, [preds[27:31]], 0, (7, 7, 7), thickness=2, lineType=cv2.LINE_AA)
+        cv2.polylines(cur_img, [preds[31:34]], 0, (8, 8, 8), thickness=2, lineType=cv2.LINE_AA)
+        cv2.polylines(cur_img, [preds[33:36]], 0, (9, 9, 9), thickness=2, lineType=cv2.LINE_AA)
+        cv2.polylines(cur_img, [preds[36:40]], 0, (10, 10, 10), thickness=2, lineType=cv2.LINE_AA)
+        cv2.polylines(cur_img, [preds[39:42]], 0, (11, 11, 11), thickness=2, lineType=cv2.LINE_AA)
+        cv2.polylines(cur_img, [preds[42:46]], 0, (12, 12, 12), thickness=2, lineType=cv2.LINE_AA)
+        cv2.polylines(cur_img, [preds[45:48]], 0, (13, 13, 13), thickness=2, lineType=cv2.LINE_AA)
+        cv2.polylines(cur_img, [preds[48:60]], 1, (14, 14, 14), thickness=2, lineType=cv2.LINE_AA)
+        cv2.polylines(cur_img, [preds[60:68]], 1, (16, 16, 16), thickness=2, lineType=cv2.LINE_AA)
         cv2.imwrite(cur_img_path, cur_img)
 
         cur_img_low_path = os.path.join(img_dir_lowRes, cur_img_name)
