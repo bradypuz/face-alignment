@@ -119,6 +119,7 @@ for i, data in enumerate(dataloader, 0):
         cur_img_name = indices[cnt+j] + '.png'
         cur_path = os.path.join(pth_dir, cur_name)
         cur_img_path = os.path.join(img_dir, cur_img_name)
+        hmap = hmap.cpu().data
         torch.save(hmap, cur_path)
 
         preds = preds_v[j,:,:].data.cpu().numpy()
